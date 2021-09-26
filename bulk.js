@@ -9,6 +9,7 @@ const _ = require('lodash');
  */
 module.exports = function (size, timeout, batchFunc) {
     let batch = [];
+    let counter = 0;
 
     // Create an executor function
     const execBatchFunc = async () => {
@@ -18,6 +19,7 @@ module.exports = function (size, timeout, batchFunc) {
 
         // Process the batch
         await batchFunc(tmp);
+        counter += tmp.length;
         console.log(`Processed ${tmp.length} records`);
     };
 
@@ -41,6 +43,10 @@ module.exports = function (size, timeout, batchFunc) {
                 // Run the throttled function when the batch is not full
                 throttledFunc();
             }
+        },
+
+        getCounter() {
+            return counter;
         },
     };
 };

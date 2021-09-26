@@ -1,10 +1,9 @@
 const path = require('path');
 const dotenv = require('dotenv-safe');
-const Koa = require('koa');
-const KoaRouter = require('koa-router');
-const bodyParser = require('koa-bodyparser');
-const { MongoClient } = require('mongodb');
+const express = require('express');
+const bodyParser = require('body-parser');
 const _ = require('lodash');
+const { MongoClient } = require('mongodb');
 const Bulker = require('./bulk');
 
 dotenv.config({
@@ -32,10 +31,11 @@ const mongoClient = new MongoClient(MONGO_URI, {
 
 const db = mongoClient.db(MONGO_DB_NAME);
 
-const app = new Koa();
-const router = new KoaRouter();
+const app = express();
 
-app.use(bodyParser());
+app.use(bodyParser.json());
+app.disable('etag');
+app.disable('x-powered-by');
 
 // Init bulk operations
 
@@ -65,71 +65,61 @@ const counterBulker = new Bulker(
 
 // Insert a log
 
-router.post('/insert_sync', async (ctx, next) => {
-    const body = ctx.request.body;
+app.post('/insert_sync', async (req, res) => {
+    const body = req.body;
     await db.collection('logs').insertOne(body);
-    ctx.response.body = 'Ok';
-    next();
+    res.send('Ok');
 });
 
-router.post('/insert_async', async (ctx, next) => {
-    const body = ctx.request.body;
+app.post('/insert_async', async (req, res) => {
+    const body = req.body;
     db.collection('logs').insertOne(body);
-    ctx.response.body = 'Ok';
-    next();
+    res.send('Ok');
 });
 
-router.post('/insert_bulk', async (ctx, next) => {
-    const body = ctx.request.body;
+app.post('/insert_bulk', async (req, res) => {
+    const body = req.body;
     insertBulker.push(body);
-    ctx.response.body = 'Ok';
-    next();
+    res.send('Ok');
 });
 
 // Increase a counter
 
-router.post('/increase_sync', async (ctx, next) => {
-    const body = ctx.request.body;
+app.post('/increase_sync', async (req, res) => {
+    const body = req.body;
     await db
         .collection('counters')
         .updateOne({ _id: body.id }, { $inc: { value: 1 } }, { upsert: true });
-    ctx.response.body = 'Ok';
-    next();
+    res.send('Ok');
 });
 
-router.post('/increase_async', async (ctx, next) => {
-    const body = ctx.request.body;
+app.post('/increase_async', async (req, res) => {
+    const body = req.body;
     db.collection('counters').updateOne(
         { _id: body.id },
         { $inc: { value: 1 } },
         { upsert: true }
     );
-    ctx.response.body = 'Ok';
-    next();
+    res.send('Ok');
 });
 
-router.post('/increase_bulk', async (ctx, next) => {
-    const body = ctx.request.body;
+app.post('/increase_bulk', async (req, res) => {
+    const body = req.body;
     counterBulker.push(body);
-    ctx.response.body = 'Ok';
-    next();
+    res.send('Ok');
 });
 
 // Empty GET request to test overhead of framework
 
-router.get('/', async (ctx, next) => {
-    ctx.response.body = 'Ok';
-    next();
+app.get('/', async (req, res) => {
+    res.send('Ok');
 });
 
 // Empty POST request to test base network latency
 
-router.post('/', async (ctx, next) => {
-    ctx.response.body = 'Ok';
-    next();
+app.post('/', async (req, res) => {
+    res.send('Ok');
 });
-
-app.use(router.routes());
 
 mongoClient.connect((err) => {
     if (err) {
