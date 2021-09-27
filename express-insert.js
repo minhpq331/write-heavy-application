@@ -19,7 +19,7 @@ const INSERT_BULK_TIMEOUT =
     parseInt(process.env.INSERT_BULK_TIMEOUT, 10) || 1000;
 const INSERT_BULK_SIZE = parseInt(process.env.INSERT_BULK_SIZE, 10) || 1000;
 const INSERT_GROUP_TIMEOUT =
-    parseInt(process.env.INSERT_GROUP_TIMEOUT, 10) || 100000;
+    parseInt(process.env.INSERT_GROUP_TIMEOUT, 10) || 60000;
 const INSERT_GROUP_SIZE = parseInt(process.env.INSERT_GROUP_SIZE, 10) || 100000;
 const INSERT_GROUP_CHUNK_SIZE =
     parseInt(process.env.INSERT_GROUP_CHUNK_SIZE, 10) || 100;
