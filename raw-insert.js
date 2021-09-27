@@ -18,9 +18,11 @@ const MONGO_DB_NAME = process.env.MONGO_DB_NAME;
 const INSERT_BULK_TIMEOUT =
     parseInt(process.env.INSERT_BULK_TIMEOUT, 10) || 1000;
 const INSERT_BULK_SIZE = parseInt(process.env.INSERT_BULK_SIZE, 10) || 1000;
-const INCREASE_BULK_TIMEOUT =
-    parseInt(process.env.INCREASE_BULK_TIMEOUT, 10) || 1000;
-const INCREASE_BULK_SIZE = parseInt(process.env.INCREASE_BULK_SIZE, 10) || 5000;
+const INSERT_GROUP_TIMEOUT =
+    parseInt(process.env.INSERT_GROUP_TIMEOUT, 10) || 100000;
+const INSERT_GROUP_SIZE = parseInt(process.env.INSERT_GROUP_SIZE, 10) || 100000;
+const INSERT_GROUP_CHUNK_SIZE =
+    parseInt(process.env.INSERT_GROUP_CHUNK_SIZE, 10) || 100;
 
 const mongoClient = new MongoClient(MONGO_URI, {
     useUnifiedTopology: true,
@@ -38,33 +40,31 @@ const insertBulker = new Bulker(
     INSERT_BULK_TIMEOUT,
     async (items) => {
         await db.collection('logs').insertMany(items);
-    },
-    counter
+    }
 );
 
-const counterBulker = new Bulker(
-    INCREASE_BULK_SIZE,
-    INCREASE_BULK_TIMEOUT,
+const groupBulker = new Bulker(
+    INSERT_GROUP_SIZE,
+    INSERT_GROUP_TIMEOUT,
     async (items) => {
-        await db.collection('counters').bulkWrite(
-            _.toPairs(_.countBy(items, 'id')).map(([id, count]) => ({
-                updateOne: {
-                    filter: { _id: Number(id) },
-                    update: { $inc: { value: count } },
-                    upsert: true,
-                },
-            }))
-        );
+        let chunk = [];
+        const start = new Date();
+        for (let i = 0; i < items.length; i++) {
+            await (async function (item) {
+                chunk.push(db.collection('logs').insertOne(item));
+                if (i % INSERT_GROUP_CHUNK_SIZE === 0) {
+                    await Promise.all(chunk);
+                    chunk = [];
+                }
+            })(items[i]);
+        }
+        console.log(`Group taked ${new Date() - start} ms`);
     }
 );
 
 async function run() {
     const start = new Date();
-    async function insert() {
-        const body = {
-            title: 'My awesome test',
-            description: 'This is a test',
-        };
+    async function insert(body) {
         await db
             .collection('logs')
             .insertOne(body)
@@ -83,31 +83,34 @@ async function run() {
     switch (ENDPOINT) {
         case 'insert_sync':
             for (let i = 0; i < NUMBER_OF_LOOP; i++) {
-                await insert();
-            }
-            break;
-        case 'insert_sync_100':
-            let items = [];
-            for (let i = 0; i < NUMBER_OF_LOOP; i++) {
-                items.push(insert());
-                if (i % 100 === 0) {
-                    await Promise.all(items);
-                    items = [];
-                }
+                await insert({
+                    title: 'My awesome test',
+                    description: 'This is a test',
+                });
             }
             break;
         case 'insert_async':
             for (let i = 0; i < NUMBER_OF_LOOP; i++) {
-                insert();
+                insert({
+                    title: 'My awesome test',
+                    description: 'This is a test',
+                });
+            }
+            break;
+        case 'insert_group':
+            for (let i = 0; i < NUMBER_OF_LOOP; i++) {
+                groupBulker.push({
+                    title: 'My awesome test',
+                    description: 'This is a test',
+                });
             }
             break;
         case 'insert_bulk':
             for (let i = 0; i < NUMBER_OF_LOOP; i++) {
-                const body = {
+                insertBulker.push({
                     title: 'My awesome test',
                     description: 'This is a test',
-                };
-                insertBulker.push(body);
+                });
             }
             setInterval(() => {
                 if (insertBulker.getCounter() === NUMBER_OF_LOOP) {

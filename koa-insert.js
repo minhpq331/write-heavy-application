@@ -19,9 +19,11 @@ const PORT = parseInt(process.env.PORT, 10) || 3000;
 const INSERT_BULK_TIMEOUT =
     parseInt(process.env.INSERT_BULK_TIMEOUT, 10) || 1000;
 const INSERT_BULK_SIZE = parseInt(process.env.INSERT_BULK_SIZE, 10) || 1000;
-const INCREASE_BULK_TIMEOUT =
-    parseInt(process.env.INCREASE_BULK_TIMEOUT, 10) || 1000;
-const INCREASE_BULK_SIZE = parseInt(process.env.INCREASE_BULK_SIZE, 10) || 5000;
+const INSERT_GROUP_TIMEOUT =
+    parseInt(process.env.INSERT_GROUP_TIMEOUT, 10) || 100000;
+const INSERT_GROUP_SIZE = parseInt(process.env.INSERT_GROUP_SIZE, 10) || 100000;
+const INSERT_GROUP_CHUNK_SIZE =
+    parseInt(process.env.INSERT_GROUP_CHUNK_SIZE, 10) || 100;
 
 const mongoClient = new MongoClient(MONGO_URI, {
     useUnifiedTopology: true,
@@ -47,19 +49,22 @@ const insertBulker = new Bulker(
     }
 );
 
-const counterBulker = new Bulker(
-    INCREASE_BULK_SIZE,
-    INCREASE_BULK_TIMEOUT,
+const groupBulker = new Bulker(
+    INSERT_GROUP_SIZE,
+    INSERT_GROUP_TIMEOUT,
     async (items) => {
-        await db.collection('counters').bulkWrite(
-            _.toPairs(_.countBy(items, 'id')).map(([id, count]) => ({
-                updateOne: {
-                    filter: { _id: Number(id) },
-                    update: { $inc: { value: count } },
-                    upsert: true,
-                },
-            }))
-        );
+        let chunk = [];
+        const start = new Date();
+        for (let i = 0; i < items.length; i++) {
+            await (async function (item) {
+                chunk.push(db.collection('logs').insertOne(item));
+                if (i % INSERT_GROUP_CHUNK_SIZE === 0) {
+                    await Promise.all(chunk);
+                    chunk = [];
+                }
+            })(items[i]);
+        }
+        console.log(`Group taked ${new Date() - start} ms`);
     }
 );
 
@@ -68,6 +73,13 @@ const counterBulker = new Bulker(
 router.post('/insert_sync', async (ctx, next) => {
     const body = ctx.request.body;
     await db.collection('logs').insertOne(body);
+    ctx.response.body = 'Ok';
+    next();
+});
+
+router.post('/insert_group', async (ctx, next) => {
+    const body = ctx.request.body;
+    groupBulker.push(body);
     ctx.response.body = 'Ok';
     next();
 });
@@ -82,35 +94,6 @@ router.post('/insert_async', async (ctx, next) => {
 router.post('/insert_bulk', async (ctx, next) => {
     const body = ctx.request.body;
     insertBulker.push(body);
-    ctx.response.body = 'Ok';
-    next();
-});
-
-// Increase a counter
-
-router.post('/increase_sync', async (ctx, next) => {
-    const body = ctx.request.body;
-    await db
-        .collection('counters')
-        .updateOne({ _id: body.id }, { $inc: { value: 1 } }, { upsert: true });
-    ctx.response.body = 'Ok';
-    next();
-});
-
-router.post('/increase_async', async (ctx, next) => {
-    const body = ctx.request.body;
-    db.collection('counters').updateOne(
-        { _id: body.id },
-        { $inc: { value: 1 } },
-        { upsert: true }
-    );
-    ctx.response.body = 'Ok';
-    next();
-});
-
-router.post('/increase_bulk', async (ctx, next) => {
-    const body = ctx.request.body;
-    counterBulker.push(body);
     ctx.response.body = 'Ok';
     next();
 });
