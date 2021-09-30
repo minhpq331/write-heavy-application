@@ -111,7 +111,25 @@ mongoClient.connect((err) => {
         console.error(err);
         process.exit(1);
     }
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
         console.log(`Application is listening at http://localhost:${PORT}`);
+    });
+
+    const terminate = function () {
+        server.close(async () => {
+            console.log('HTTP server closed, flushing batch...');
+            await groupBulker.flush();
+            await mongoClient.close();
+            console.log('Cleaned everything, bye bye.');
+        });
+    }
+
+    process.on('SIGTERM', () => {
+        console.log('SIGTERM signal received: closing HTTP server');
+        terminate();
+    });
+    process.on('SIGINT', () => {
+        console.log('SIGINT signal received: closing HTTP server');
+        terminate();
     });
 });

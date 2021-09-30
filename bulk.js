@@ -38,11 +38,15 @@ module.exports = function (size, timeout, batchFunc) {
             batch.push(item);
             if (batch.length >= size) {
                 // Flush the batch when the batch is full
-                throttledFunc.flush();
+                this.flush();
             } else {
                 // Run the throttled function when the batch is not full
                 throttledFunc();
             }
+        },
+
+        async flush() {
+            return throttledFunc.flush();
         },
 
         getCounter() {
