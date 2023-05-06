@@ -6,6 +6,7 @@ export default function () {
     let res = http.post(
         'http://localhost:3000/',
         JSON.stringify({
+            id: Math.floor(Math.random() * 1000),
             title: 'My awesome test',
             description: 'This is a test',
         }),
